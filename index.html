@@ -1,0 +1,309 @@
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0 auto auto;
+        width: min(80rem, calc(100% - 4rem));
+    }
+
+    label {
+        display: block;
+        margin-top: 1rem;
+    }
+
+    input:not([type="radio"]):not(.inline),
+    fieldset {
+        width: min(100%, 30rem);
+        display: block;
+    }
+
+    #generators,
+    #goals {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    #generators>section {
+        padding: 1rem;
+        border: 1px solid rgb(0, 0, 0, 0.2);
+        width: 15rem;
+    }
+
+    #addGenerator {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    button {
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+
+    .danger {
+        background-color: rgb(255, 200, 200);
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    table {
+        border-collapse: collapse;
+    }
+
+    th,
+    td {
+        padding: 0.5rem;
+        border: 1px solid lightgray;
+    }
+
+    #graph {
+        border: 1px solid lightgray;
+        height: 30rem;
+        width: min(80rem, 100%);
+        margin-top: 2rem;
+    }
+</style>
+
+<script>
+    function addBlankGenerator() {
+        const clone = getBaseGenerator().cloneNode(true)
+
+        document.querySelector(`#addGenerator`).before(clone)
+
+        for (const input of clone.querySelectorAll(`input`)) {
+            input.value = ``
+        }
+
+        const deleteButton = clone.querySelector(`.hidden`)
+
+        deleteButton.classList.remove(`hidden`)
+    }
+
+    function getBaseGenerator() {
+        return document.querySelector(`#generators > section`)
+    }
+
+    /**
+     * @return {Array<{
+     *  name: string
+     *  cost: number
+     *  income: number
+     * }>}
+     */
+    function getGenerators() {
+        return Array.from(document.querySelectorAll(`#generators > section`))
+            .slice(0, -1) // to ignore the "add another" button section
+            .map(generatorElement => {
+                return Array.from(generatorElement.querySelectorAll(`input`)).reduce((data, input) => {
+                    data[input.name] = input.type === `number` ? Number(input.value) : input.value
+
+                    return data
+                }, {})
+            })
+    }
+
+
+    function simulate() {
+        const generators = getGenerators()
+
+        if (generators.length > 10) {
+          alert(`There can't be more than 10 generators because of the way we turn numbers into strategies. See the 'nextStrategy' variable.`)
+          throw new Error(`see alert`)
+        }
+
+        const startingMoney = 0
+        const startingIncome = 1
+
+        // Make a strategy for each generator
+        // Drop the ones that are strictly beaten by others
+        //   where strictly beaten means "All resources (money, time, ...) are higher, and income is higher, in one strategy, at a given timestep."
+        // Make all children from the winners, by appending all generators.
+
+        // Note that if one strategy strictly beats another, that DOESN'T MEAN that no children (children = append something to the parent) of the other can beat the first.
+        // Ex, [small] & [big]: big eventually strictly beats small, but it takes lots of timesteps. But it might turn out that [small, big, big] beats all combos of [big, big, ...]
+        // It is clear that if a strategy strictly beats another before the other is complete with its purchases, then the other no longer needs to be considered.
+        
+        const computationTimeLimit = 1e3 * 10
+        const timestepsPerStrategy = 40
+        const winningStrategies = [newStrategy([0])]
+
+
+        const startTime = Date.now()
+        let strategyNumber = 0
+
+        while(Date.now() - startTime < computationTimeLimit){
+          /**
+           * @type{ Array<ReturnType<typeof newStrategy>>}
+           */ 
+          for (let i = 0; i < 1e2; i += 1) {
+            // Note - this only works if there are at most 10 generators
+            const nextStrategy = newStrategy(strategyNumber.toString(generators.length).split('').map(digit => Number(digit)).reverse())
+            strategyNumber += 1
+
+            runForTimesteps(generators, nextStrategy, timestepsPerStrategy)
+
+            if (nextStrategy.currentMoney >= winningStrategies[0].currentMoney){
+                winningStrategies.push(nextStrategy)
+                winningStrategies.sort((strategy1, strategy2) => strategy1.currentMoney - strategy2.currentMoney)
+                if (winningStrategies.length > 20){
+                    winningStrategies.shift()
+                }
+            }
+          }
+          
+        }
+
+        console.log(winningStrategies)        
+
+        // graph(winningStrategies)
+    }
+
+    /**
+     * @param {ReturnType<typeof getGenerators>} generators
+     * @param {ReturnType<typeof newStrategy>} strategy
+     * @param {number} timesteps
+     */
+    function runForTimesteps(generators, strategy, timesteps){
+        for (let i = 0; i < timesteps; i += 1){
+            strategy.currentMoney += strategy.currentIncome
+            strategy.timesteps += 1
+            if (strategy.currentGeneratorListIndex < strategy.generatorList.length){
+                const nextGenerator = generators[strategy.generatorList[strategy.currentGeneratorListIndex]]
+                // TODO make it so that you can buy multiple generators in one timestep
+                if (strategy.currentMoney >= nextGenerator.cost){
+                    strategy.currentMoney -= nextGenerator.cost
+                    strategy.currentIncome += nextGenerator.income
+                    strategy.currentGeneratorListIndex += 1
+                }
+            } 
+        }
+    }
+
+    /**
+     * @return{{generatorList: Array<number>, currentGeneratorListIndex: number, currentIncome: number, currentMoney: number, timesteps: number }}
+     */ 
+    function newStrategy(generatorList){
+        return {
+                generatorList,
+                currentGeneratorListIndex: 0,
+                currentIncome: 1,
+                currentMoney: 0,
+                timesteps: 0
+            }
+    }
+
+
+
+    /**
+     * A strategy is a purchase ordering of generators.
+     * 
+     * You may or may not actualy purchase all of them before running out of time/resources, but a strategy like:
+     * 0, 1, 0, 0
+     * means to purchase generator 0 as soon as possible, then purchase generator 1, then zero again, then zero again.
+     * 
+     * If we need time dependent purchases in the future, we will add a special "wait" generator that a strategy can choose to buy at any given time.
+     * We considered having strategies say when to purchase each generator, but that leads to feasibility issues (a strategy that can't be done?) and is more complicated than adding a wait step in the strategy.
+     * 
+     * 
+     * We will compare all strategies lenght 1,
+     * then all length 2 from the winners, 
+     * then all length 3 from those winners....
+     * 
+     * We will compute for a fixed time, and then report what we got.
+     */
+
+    function graph() {
+        const canvas = document.querySelector(`#graph`)
+
+        new Chart(canvas, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: '# of Votes',
+                    data: [
+                        { x: 0, y: 1 },
+                        { x: 1, y: 1.3 },
+                        { x: 2, y: 1.2 },
+                        { x: 3, y: 1.35 },
+                    ],
+                    elements: {
+                        point: {
+                            radius: 7,
+                        }
+                    }
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+            }
+        })
+    }
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+
+<body>
+    <h1>
+        Conditions
+    </h1>
+    <section id="goals">
+        <section>
+            <label>Initial Money<input type="number"></label>
+            <label>Time Limit<input type="number"></label>
+            <label>Labor Limit (time per time)<input type="number"></label>
+        </section>
+        <fieldset>
+            <legend>
+                Goal
+            </legend>
+            <label><input type="radio" name="goal">Maximize Money</label>
+            <label><input type="radio" name="goal">Maximize chance of reaching <input placeholder="enter a number..."
+                    class="inline" type="number"></label>
+        </fieldset>
+    </section>
+
+    <h1>
+        Generators
+    </h1>
+    <section id="generators">
+        <section>
+            <label>Name<input name="name" type="text"></label>
+            <label>Cost<input name="cost" type="number"></label>
+            <label>Income<input name="income" type="number"></label>
+            <button>Clone</button>
+            <button class="danger hidden" onclick="this.parentElement.remove()">Delete</button>
+        </section>
+        <section id="addGenerator">
+            <button onclick="addBlankGenerator()">Add Another</button>
+        </section>
+    </section>
+    <button onclick="simulate()">Simulate</button>
+
+    <h1>
+        Results
+    </h1>
+    <section id="results">
+        <table>
+            <tr>
+                <th>Step</th>
+                <th>Action</th>
+                <th>Balance</th>
+                <th>Total Value</th>
+            </tr>
+            <tr>
+                <td colspan="100%">Simulate to see results</td>
+            </tr>
+        </table>
+        <canvas id="graph"></canvas>
+    </section>
+
+</body>
