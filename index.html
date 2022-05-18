@@ -166,7 +166,7 @@
         // Ex, [small] & [big]: big eventually strictly beats small, but it takes lots of timesteps. But it might turn out that [small, big, big] beats all combos of [big, big, ...]
         // It is clear that if a strategy strictly beats another before the other is complete with its purchases, then the other no longer needs to be considered.
         
-        const computationTimeLimit = 1e3 * 10
+        const computationTimeLimit = 1e3 * 2
         const timestepsPerStrategy = 40
         const winningStrategies = [newStrategy([0])]
 
@@ -185,17 +185,32 @@
 
             runForTimesteps(generators, nextStrategy, timestepsPerStrategy)
 
-            if (nextStrategy.currentMoney >= winningStrategies[0].currentMoney){
+            if (nextStrategy.currentMoney >= winningStrategies[winningStrategies.length - 1].currentMoney){
                 winningStrategies.push(nextStrategy)
-                winningStrategies.sort((strategy1, strategy2) => strategy1.currentMoney - strategy2.currentMoney)
+                winningStrategies.sort((strategy1, strategy2) => strategy2.currentMoney - strategy1.currentMoney)
                 if (winningStrategies.length > 20){
-                    winningStrategies.shift()
+                    winningStrategies.pop()
                 }
             }
           }
           
         }
 
+        const resultsTableBody = document.querySelector(`#results > table > tbody`)
+        // Remove all existing rows from the results table.
+        resultsTableBody.innerHTML = ``
+        const numToShow = 3
+        winningStrategies.slice(0,numToShow).forEach(strategy => {
+            const row = document.createElement(`tr`)
+            const strategyPurchaseOrderString = strategy.generatorList.map(generatorIndex => generators[generatorIndex].name).join(',')
+            row.innerHTML = `
+                <td>${strategyPurchaseOrderString}</td>
+                <td>${strategy.currentMoney}</td>
+                <td>${strategy.currentIncome}</td>
+            `
+            resultsTableBody.appendChild(row)
+        })
+        
         console.log(winningStrategies)        
 
         // graph(winningStrategies)
@@ -339,15 +354,14 @@
     </h1>
     <section id="results">
         <table>
+            <thead>
             <tr>
-                <th>Step</th>
-                <th>Action</th>
-                <th>Balance</th>
-                <th>Total Value</th>
+                <th>Purchase Order</th>
+                <th>Ending value after 100 steps</th>
+                <th>Ending income</th></th>
             </tr>
-            <tr>
-                <td colspan="100%">Simulate to see results</td>
-            </tr>
+            </thead>
+            <tbody></tbody>
         </table>
         <canvas id="graph"></canvas>
     </section>
