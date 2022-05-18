@@ -70,6 +70,35 @@
 </style>
 
 <script>
+    document.addEventListener(`DOMContentLoaded`, () => {
+        loadInputsFromURL()
+    })
+    
+    function loadInputsFromURL(){
+        const inputsString = new URLSearchParams(window.location.search).get(`inputs`)
+        const inputs = JSON.parse(decodeURIComponent(inputsString))
+
+        // make sure there are enough generators and then fill them all in
+        inputs.generators.slice(1).forEach(addBlankGenerator)
+        
+
+        if (inputs.generators.length == 0) return
+        
+        for (const [index, htmlGenerator] of getAllHtmlGenerators().entries()){
+            const generatorObject = inputs.generators[index]
+            for (const key in generatorObject){
+                htmlGenerator.querySelector(`input[name="${key}"]`).value = generatorObject[key]
+            }
+        }
+    }
+
+    /**
+     * @return {Array<HTMLElement>}
+     */
+    function getAllHtmlGenerators(){
+        return Array.from(document.querySelectorAll(`#generators > section`)).slice(0, -1) // slice to remove the 'add another' section at the end that isn't actually a generator
+    }
+
     function addBlankGenerator() {
         const clone = getBaseGenerator().cloneNode(true)
 
@@ -89,31 +118,40 @@
     }
 
     /**
-     * @return {Array<{
-     *  name: string
-     *  cost: number
-     *  income: number
-     * }>}
+     * @return {{
+     *   generators: Array<{
+     *     name: string
+     *     cost: number
+     *     income: number
+     *   }>
+     * }}
      */
-    function getGenerators() {
-        return Array.from(document.querySelectorAll(`#generators > section`))
-            .slice(0, -1) // to ignore the "add another" button section
-            .map(generatorElement => {
+    function getInputs() {
+        return {
+            generators: getAllHtmlGenerators().map(generatorElement => {
                 return Array.from(generatorElement.querySelectorAll(`input`)).reduce((data, input) => {
                     data[input.name] = input.type === `number` ? Number(input.value) : input.value
 
                     return data
                 }, {})
             })
+        }
     }
 
-
     function simulate() {
-        const generators = getGenerators()
+        const inputs = getInputs()
+        updateWindowURL(inputs)
+
+        const generators = inputs.generators
 
         if (generators.length > 10) {
           alert(`There can't be more than 10 generators because of the way we turn numbers into strategies. See the 'nextStrategy' variable.`)
           throw new Error(`see alert`)
+        }
+
+        if (generators.length < 2) {
+            alert(`There need to be at least 2 generators for a meaningful simulation.`)
+            throw new Error(`see alert`)
         }
 
         const startingMoney = 0
@@ -161,6 +199,14 @@
         console.log(winningStrategies)        
 
         // graph(winningStrategies)
+    }
+
+    /**
+     * @param {ReturnType<typeof getInputs>} inputs
+     */
+    function updateWindowURL(inputs){
+        // See https://developer.mozilla.org/en-US/docs/Web/API/History/pushState since the arguments are weird
+        window.history.pushState(null, ``, `/?inputs=${encodeURIComponent(JSON.stringify(inputs))}`)
     }
 
     /**
