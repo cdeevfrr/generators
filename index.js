@@ -4,12 +4,15 @@
     
     function loadInputsFromURL(){
         const inputsString = new URLSearchParams(window.location.search).get(`inputs`)
+        if(!inputsString){
+            return
+        }
+
         const inputs = JSON.parse(decodeURIComponent(inputsString))
 
         // make sure there are enough generators and then fill them all in
+        // The first blank generator is already written in the HTML directly.
         inputs.generators.slice(1).forEach(addBlankGenerator)
-        
-
         if (inputs.generators.length == 0) return
         
         for (const [index, htmlGenerator] of getAllHtmlGenerators().entries()){
@@ -153,7 +156,7 @@
     }
 
     /**
-     * @param {ReturnType<typeof getGenerators>} generators
+     * @param {ReturnType<typeof getInputs>['generators']} generators
      * @param {ReturnType<typeof newStrategy>} strategy
      * @param {number} timesteps
      */
