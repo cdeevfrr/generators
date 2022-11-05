@@ -85,47 +85,8 @@
             throw new Error(`see alert`)
         }
 
-        const startingMoney = 0
-        const startingIncome = 1
-
-        // Make a strategy for each generator
-        // Drop the ones that are strictly beaten by others
-        //   where strictly beaten means "All resources (money, time, ...) are higher, and income is higher, in one strategy, at a given timestep."
-        // Make all children from the winners, by appending all generators.
-
-        // Note that if one strategy strictly beats another, that DOESN'T MEAN that no children (children = append something to the parent) of the other can beat the first.
-        // Ex, [small] & [big]: big eventually strictly beats small, but it takes lots of timesteps. But it might turn out that [small, big, big] beats all combos of [big, big, ...]
-        // It is clear that if a strategy strictly beats another before the other is complete with its purchases, then the other no longer needs to be considered.
-        
         const computationTimeLimit = 1e3 * 2
-        const timestepsPerStrategy = 40
-        const winningStrategies = [newStrategy([0])]
-
-
-        const startTime = Date.now()
-        let strategyNumber = 0
-
-        while(Date.now() - startTime < computationTimeLimit){
-          /**
-           * @type{ Array<ReturnType<typeof newStrategy>>}
-           */ 
-          for (let i = 0; i < 1e2; i += 1) {
-            // Note - this only works if there are at most 10 generators
-            const nextStrategy = newStrategy(strategyNumber.toString(generators.length).split('').map(digit => Number(digit)).reverse())
-            strategyNumber += 1
-
-            runForTimesteps(generators, nextStrategy, timestepsPerStrategy)
-
-            if (nextStrategy.currentMoney >= winningStrategies[winningStrategies.length - 1].currentMoney){
-                winningStrategies.push(nextStrategy)
-                winningStrategies.sort((strategy1, strategy2) => strategy2.currentMoney - strategy1.currentMoney)
-                if (winningStrategies.length > 20){
-                    winningStrategies.pop()
-                }
-            }
-          }
-          
-        }
+        const winningStrategies = solve(generators, computationTimeLimit)
 
         const resultsTableBody = document.querySelector(`#results > table > tbody`)
         // Remove all existing rows from the results table.
@@ -133,7 +94,7 @@
         const numToShow = 3
         winningStrategies.slice(0,numToShow).forEach(strategy => {
             const row = document.createElement(`tr`)
-            const strategyPurchaseOrderString = strategy.generatorList.map(generatorIndex => generators[generatorIndex].name).join(',')
+            const strategyPurchaseOrderString = strategy.generatorOrder.map(generatorIndex => generators[generatorIndex].name).join(',')
             row.innerHTML = `
                 <td>${strategyPurchaseOrderString}</td>
                 <td>${strategy.currentMoney}</td>
@@ -155,59 +116,6 @@
         window.history.pushState(null, ``, `/?inputs=${encodeURIComponent(JSON.stringify(inputs))}`)
     }
 
-    /**
-     * @param {ReturnType<typeof getInputs>['generators']} generators
-     * @param {ReturnType<typeof newStrategy>} strategy
-     * @param {number} timesteps
-     */
-    function runForTimesteps(generators, strategy, timesteps){
-        for (let i = 0; i < timesteps; i += 1){
-            strategy.currentMoney += strategy.currentIncome
-            strategy.timesteps += 1
-            if (strategy.currentGeneratorListIndex < strategy.generatorList.length){
-                const nextGenerator = generators[strategy.generatorList[strategy.currentGeneratorListIndex]]
-                // TODO make it so that you can buy multiple generators in one timestep
-                if (strategy.currentMoney >= nextGenerator.cost){
-                    strategy.currentMoney -= nextGenerator.cost
-                    strategy.currentIncome += nextGenerator.income
-                    strategy.currentGeneratorListIndex += 1
-                }
-            } 
-        }
-    }
-
-    /**
-     * @return{{generatorList: Array<number>, currentGeneratorListIndex: number, currentIncome: number, currentMoney: number, timesteps: number }}
-     */ 
-    function newStrategy(generatorList){
-        return {
-                generatorList,
-                currentGeneratorListIndex: 0,
-                currentIncome: 1,
-                currentMoney: 0,
-                timesteps: 0
-            }
-    }
-
-
-
-    /**
-     * A strategy is a purchase ordering of generators.
-     * 
-     * You may or may not actualy purchase all of them before running out of time/resources, but a strategy like:
-     * 0, 1, 0, 0
-     * means to purchase generator 0 as soon as possible, then purchase generator 1, then zero again, then zero again.
-     * 
-     * If we need time dependent purchases in the future, we will add a special "wait" generator that a strategy can choose to buy at any given time.
-     * We considered having strategies say when to purchase each generator, but that leads to feasibility issues (a strategy that can't be done?) and is more complicated than adding a wait step in the strategy.
-     * 
-     * 
-     * We will compare all strategies lenght 1,
-     * then all length 2 from the winners, 
-     * then all length 3 from those winners....
-     * 
-     * We will compute for a fixed time, and then report what we got.
-     */
 
     function graph() {
         const canvas = document.querySelector(`#graph`)
